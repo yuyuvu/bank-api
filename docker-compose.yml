@@ -1,0 +1,50 @@
+# В compose поднимаются три сервиса: само API, PostgreSQL и Mailpit для писем.
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - pgp_keys:/app/configs/keys # раздел для ключей
+    depends_on:
+      postgres:
+        condition: service_healthy
+      smtp:
+        condition: service_started
+    environment:
+      TZ: "Europe/Moscow"
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/bankapidb?sslmode=disable"
+      SMTP_HOST: "smtp"
+      SMTP_PORT: "1025"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      JWT_SECRET: "${JWT_SECRET:-MWxj8Y0TnSu4haI3pZuyOyX4rLcsEFleGMn2tV07kbm}"
+      PGP_PASSPHRASE: "${PGP_PASSPHRASE:-mPEl7VTivvwPQnv6UuPOimZRotvIoQSFknClprQjOMJ}"
+      HMAC_SECRET: "${HMAC_SECRET:-H5DVsUQwcGUROKCuCAUgNZs9vNpimxyAxarsg3KTNPu}"
+      LOG_LEVEL: "${LOG_LEVEL:-debug}"
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: bankapidb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bankapidb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  smtp:
+    image: axllent/mailpit:v1.29.7
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  pgdata:
+  pgp_keys:

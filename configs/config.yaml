@@ -1,0 +1,29 @@
+# Базовый конфиг для приложения
+server:
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+
+database_url: "${DATABASE_URL}"
+
+jwt:
+  secret: "${JWT_SECRET}"
+  ttl: 24h
+
+encryption:
+  pgp_public_key: ""
+  pgp_private_key: ""
+  pgp_passphrase: "${PGP_PASSPHRASE}"
+  hmac_secret: "${HMAC_SECRET}"
+
+smtp:
+  host: "${SMTP_HOST}"
+  port: 1025
+  user: ""
+  password: ""
+
+cbr:
+  margin: 2.0
+
+log:
+  level: "${LOG_LEVEL}"

@@ -1,0 +1,1379 @@
+openapi: 3.1.2
+info:
+  title: Bank API
+  description: |
+    REST API банковского сервиса.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Локальный запуск через docker compose
+
+tags:
+  - name: Auth
+    description: Регистрация, вход, 2FA, назначение первого администратора
+  - name: Accounts
+    description: Счета, пополнение, списание
+  - name: Cards
+    description: Выпуск и использование карт
+  - name: Transfers
+    description: Переводы между счетами
+  - name: Credits
+    description: Кредиты и график платежей
+  - name: Analytics
+    description: Аналитика и прогноз баланса
+  - name: Admin
+    description: Функции для администратора
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Токен из POST /api/login или POST /api/register
+
+  schemas:
+    ErrorBody:
+      type: object
+      description: Тело ответа при ошибке (data не включается).
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+      example:
+        success: false
+        error: "Неверный email или пароль"
+
+    SuccessWrapper:
+      type: object
+      description: Общая часть успешного ответа (error не включается).
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+
+    SuccessWithStringData:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        data:
+          type: string
+      example:
+        success: true
+        data: "Операция выполнена успешно"
+
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_]{3,50}$'
+          example: "user1"
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 50
+          description: Обязательны буква (латиница или кириллица) и цифра
+          example: "pass123word"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          example: "pass123word"
+        otp_code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: Если у пользователя включена 2FA
+          example: "123456"
+
+    AuthResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+      example:
+        token: "eyJhbGciOiJIUzI1NiIs..."
+
+    CreateAccountRequest:
+      type: object
+      required: [currency]
+      properties:
+        currency:
+          type: string
+          enum: [RUB]
+          example: "RUB"
+
+    AmountRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          example: 1000
+
+    AccountResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        user_id:
+          type: integer
+          format: int64
+          example: 1
+        balance:
+          type: number
+          example: 5000.00
+        currency:
+          type: string
+          example: "RUB"
+        created_at:
+          type: string
+          example: "2026-05-10T12:00:00Z"
+
+    IssueCardRequest:
+      type: object
+      required: [account_id]
+      properties:
+        account_id:
+          type: integer
+          format: int64
+          example: 1
+
+    CardResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        account_id:
+          type: integer
+          format: int64
+          example: 1
+        masked_number:
+          type: string
+          example: "**** **** **** 1234"
+        status:
+          type: string
+          example: "active"
+
+    CardDetailResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        number:
+          type: string
+          example: "4532456789012345"
+        expiry:
+          type: string
+          example: "05/2031"
+        cvv:
+          type: string
+          example: "123"
+        status:
+          type: string
+          example: "active"
+
+    CardPaymentRequest:
+      type: object
+      required: [amount, cvv]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          example: 500.00
+        cvv:
+          type: string
+          pattern: '^[0-9]{3}$'
+          example: "123"
+        description:
+          type: string
+          maxLength: 255
+          example: "Оплата в кафе"
+        otp_code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "654321"
+
+    CardPaymentResponse:
+      type: object
+      properties:
+        transaction_id:
+          type: integer
+          format: int64
+          example: 10
+        account_id:
+          type: integer
+          format: int64
+          example: 1
+        amount:
+          type: number
+          example: 500.00
+
+    TransferRequest:
+      type: object
+      required: [from_account_id, to_account_id, amount]
+      properties:
+        from_account_id:
+          type: integer
+          format: int64
+          example: 1
+        to_account_id:
+          type: integer
+          format: int64
+          example: 2
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          example: 1000.00
+        otp_code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "111111"
+
+    TransferResponse:
+      type: object
+      properties:
+        transaction_id:
+          type: integer
+          format: int64
+          example: 11
+
+    CreditApplication:
+      type: object
+      required: [account_id, amount, term_months]
+      properties:
+        account_id:
+          type: integer
+          format: int64
+          example: 1
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          example: 100000
+        term_months:
+          type: integer
+          minimum: 1
+          maximum: 360
+          example: 12
+
+    CreditResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        monthly_payment:
+          type: number
+          example: 8956.12
+        interest_rate:
+          type: number
+          example: 16.5
+
+    CreditListItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        account_id:
+          type: integer
+          format: int64
+          example: 1
+        amount:
+          type: number
+          example: 100000
+        interest_rate:
+          type: number
+          example: 16.5
+        term_months:
+          type: integer
+          example: 12
+        monthly_payment:
+          type: number
+          example: 8956.12
+        remaining_amount:
+          type: number
+          example: 90876.44
+        status:
+          type: string
+          example: "active"
+        created_at:
+          type: string
+          example: "2026-05-10T12:00:00Z"
+
+    PaymentScheduleResponse:
+      type: object
+      properties:
+        due_date:
+          type: string
+          example: "2026-06-10"
+        amount:
+          type: number
+          example: 8956.12
+        paid_amount:
+          type: number
+          example: 0.00
+        status:
+          type: string
+          example: "pending"
+
+    CreditPaymentRequest:
+      type: object
+      properties:
+        otp_code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "123456"
+
+    CreditPaymentResponse:
+      type: object
+      properties:
+        transaction_id:
+          type: integer
+          format: int64
+          example: 12
+        paid_amount:
+          type: number
+          example: 8956.12
+        penalty_amount:
+          type: number
+          example: 0.00
+        remaining_debt:
+          type: number
+          example: 90876.44
+
+    IncomeExpenseResponse:
+      type: object
+      properties:
+        year_month:
+          type: string
+          example: "2026-05"
+        income:
+          type: number
+          example: 15000.00
+        expense:
+          type: number
+          example: 4500.00
+
+    CreditLoadResponse:
+      type: object
+      properties:
+        total_debt:
+          type: number
+          example: 90876.44
+        monthly_payments:
+          type: number
+          example: 8956.12
+        as_of_date:
+          type: string
+          example: "2026-05-11"
+
+    BalancePrediction:
+      type: object
+      properties:
+        date:
+          type: string
+          example: "2026-05-12"
+        balance:
+          type: number
+          example: 4123.56
+
+    AnalyticsSummaryResponse:
+      type: object
+      properties:
+        scope:
+          type: string
+          example: "user"
+        year_month:
+          type: string
+          example: "2026-05"
+        account_id:
+          type: integer
+          format: int64
+          nullable: true
+          example: null
+        income_expense:
+          $ref: '#/components/schemas/IncomeExpenseResponse'
+        credit_load:
+          $ref: '#/components/schemas/CreditLoadResponse'
+
+    AccountPredictionResponse:
+      type: object
+      properties:
+        account_id:
+          type: integer
+          format: int64
+          example: 1
+        current_balance:
+          type: number
+          example: 5000.00
+        currency:
+          type: string
+          example: "RUB"
+        predictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BalancePrediction'
+
+    AllAccountsPredictionResponse:
+      type: object
+      properties:
+        currency:
+          type: string
+          example: "RUB"
+        current_total_balance:
+          type: number
+          example: 8000.00
+        total_predictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/BalancePrediction'
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountPredictionResponse'
+
+    Enable2FARequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "123456"
+
+    Disable2FARequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: "123456"
+
+    TwoFactorSetupResponse:
+      type: object
+      properties:
+        secret:
+          type: string
+          example: "JBSWY3DPEHPK3PXP"
+        url:
+          type: string
+          example: "otpauth://totp/BankAPI:user@example.com?secret=JBSWY3DPEHPK3PXP&issuer=BankAPI"
+        issuer:
+          type: string
+          example: "BankAPI"
+        account_name:
+          type: string
+          example: "user@example.com"
+        qr_code_png_base64:
+          type: string
+          example: "iVBORw0KGgoAAAANSUhEUgAA..."
+
+    BlockRequest:
+      type: object
+      required: [block]
+      properties:
+        block:
+          type: boolean
+          example: true
+
+    AdminUserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: "user1"
+        email:
+          type: string
+          example: "user@example.com"
+        is_blocked:
+          type: boolean
+          example: false
+        role:
+          type: string
+          example: "user"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-05-10T12:00:00Z"
+
+  parameters:
+    AccountId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 1
+    CardId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 1
+    CreditId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 1
+    UserIdAdmin:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 1
+    YearMonth:
+      name: year_month
+      in: query
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]{4}-[0-9]{2}$'
+      example: "2026-05"
+
+  responses:
+    Unauthorized:
+      description: Нет токена или неверный токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+          example:
+            success: false
+            error: "Требуется заголовок Authorization"
+    Forbidden:
+      description: Нет прав
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+          example:
+            success: false
+            error: "Доступ запрещён"
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+          example:
+            success: false
+            error: "Ресурс не найден"
+    BadRequest:
+      description: Некорректные входные данные
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+          example:
+            success: false
+            error: "Ошибка валидации"
+
+paths:
+  /api/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Создан пользователь, в data токен
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthResponse'
+              example:
+                success: true
+                data:
+                  token: "eyJhbGciOiJIUzI1NiIs..."
+        '400':
+          description: Ошибка валидации или занятый email или username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /api/login:
+    post:
+      tags: [Auth]
+      summary: Вход по email и паролю
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthResponse'
+              example:
+                success: true
+                data:
+                  token: "eyJhbGciOiJIUzI1NiIs..."
+        '401':
+          description: Неверные учётные данные или код 2FA
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /api/2fa/setup:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      summary: Подготовка секрета 2FA
+      responses:
+        '200':
+          description: Данные для настройки TOTP
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TwoFactorSetupResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/2fa/enable:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      summary: Включение 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Enable2FARequest'
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessWithStringData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/2fa/disable:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      summary: Отключение 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Disable2FARequest'
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessWithStringData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/bootstrap:
+    post:
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      summary: Назначить себя администратором, если администраторов ещё нет
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessWithStringData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Администратор уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /api/accounts:
+    post:
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      summary: Создать счёт
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '201':
+          description: Созданный счёт
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AccountResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      summary: Список счетов текущего пользователя
+      responses:
+        '200':
+          description: Массив счетов
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AccountResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/accounts/predict:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Прогноз по всем счетам
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+            minimum: 1
+            maximum: 365
+          example: 30
+      responses:
+        '200':
+          description: Сводный прогноз и по каждому счёту
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AllAccountsPredictionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/accounts/{id}:
+    get:
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      summary: Получить счёт по id
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AccountResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/accounts/{id}/deposit:
+    post:
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      summary: Пополнение счёта
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AmountRequest'
+      responses:
+        '200':
+          description: Успех
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessWithStringData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/accounts/{id}/withdraw:
+    post:
+      tags: [Accounts]
+      security:
+        - bearerAuth: []
+      summary: Списание со счёта
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AmountRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessWithStringData'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/accounts/{id}/income-expense:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Доходы и расходы по счёту за месяц
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - $ref: '#/components/parameters/YearMonth'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IncomeExpenseResponse'
+        '400':
+          description: Неверный year_month
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /api/accounts/{id}/credit-load:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Текущая кредитная нагрузка по счёту
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CreditLoadResponse'
+
+  /api/accounts/{id}/analytics:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Сводная аналитика по счёту
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: year_month
+          in: query
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}$'
+          example: "2026-05"
+          description: По умолчанию текущий календарный месяц
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AnalyticsSummaryResponse'
+
+  /api/accounts/{id}/predict:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Прогноз баланса по счёту
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+            minimum: 1
+            maximum: 365
+          example: 30
+      responses:
+        '200':
+          description: Массив точек прогноза по дням
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/BalancePrediction'
+
+  /api/cards:
+    post:
+      tags: [Cards]
+      security:
+        - bearerAuth: []
+      summary: Выпустить карту
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueCardRequest'
+      responses:
+        '201':
+          description: Карта в маскированном виде
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CardResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [Cards]
+      security:
+        - bearerAuth: []
+      summary: Список карт
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CardResponse'
+
+  /api/cards/{id}:
+    get:
+      tags: [Cards]
+      security:
+        - bearerAuth: []
+      summary: Данные карты для владельца
+      parameters:
+        - $ref: '#/components/parameters/CardId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CardDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/cards/{id}/pay:
+    post:
+      tags: [Cards]
+      security:
+        - bearerAuth: []
+      summary: Оплата с карты
+      parameters:
+        - $ref: '#/components/parameters/CardId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardPaymentRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CardPaymentResponse'
+
+  /api/transfer:
+    post:
+      tags: [Transfers]
+      security:
+        - bearerAuth: []
+      summary: Перевод между счетами
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TransferResponse'
+
+  /api/credits:
+    post:
+      tags: [Credits]
+      security:
+        - bearerAuth: []
+      summary: Оформить кредит
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditApplication'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CreditResponse'
+    get:
+      tags: [Credits]
+      security:
+        - bearerAuth: []
+      summary: Список кредитов пользователя
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CreditListItemResponse'
+
+  /api/credits/{id}/schedule:
+    get:
+      tags: [Credits]
+      security:
+        - bearerAuth: []
+      summary: График платежей
+      parameters:
+        - $ref: '#/components/parameters/CreditId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PaymentScheduleResponse'
+
+  /api/credits/{id}/pay:
+    post:
+      tags: [Credits]
+      security:
+        - bearerAuth: []
+      summary: Оплатить ближайший платёж по графику
+      parameters:
+        - $ref: '#/components/parameters/CreditId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreditPaymentRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CreditPaymentResponse'
+
+  /api/analytics:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Сводная аналитика по пользователю
+      parameters:
+        - name: year_month
+          in: query
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}$'
+          example: "2026-05"
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AnalyticsSummaryResponse'
+
+  /api/analytics/income-expense:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Доходы и расходы за месяц по всем счетам
+      parameters:
+        - $ref: '#/components/parameters/YearMonth'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/IncomeExpenseResponse'
+
+  /api/analytics/credit-load:
+    get:
+      tags: [Analytics]
+      security:
+        - bearerAuth: []
+      summary: Текущая кредитная нагрузка пользователя
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/CreditLoadResponse'
+        '400':
+          description: Если передан year_month
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /api/admin/users:
+    get:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      summary: Список пользователей
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessWrapper'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AdminUserResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/users/{id}/block:
+    post:
+      tags: [Admin]
+      security:
+        - bearerAuth: []
+      summary: Заблокировать или разблокировать пользователя
+      parameters:
+        - $ref: '#/components/parameters/UserIdAdmin'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlockRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessWithStringData'
+        '403':
+          $ref: '#/components/responses/Forbidden'
